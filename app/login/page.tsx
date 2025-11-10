@@ -1,4 +1,7 @@
-import { cn } from "@/lib/utils";
+"use client";
+
+import { useState } from "react";
+
 import { Button } from "@/components/ui/button";
 import {
   Card,
@@ -14,21 +17,34 @@ import {
   FieldLabel,
 } from "@/components/ui/field";
 import { Input } from "@/components/ui/input";
+import { useRouter } from "next/navigation";
 
 export default function LoginPage() {
-  const handleSignin = (e: React.FormEvent<HTMLFormElement>) => {
+  const [email, setEmail] = useState("");
+  const [password, setPassword] = useState("");
+  const router = useRouter();
+
+  const handleSignin = async (e: React.FormEvent<HTMLFormElement>) => {
     e.preventDefault();
+
+    const response = await fetch("/api/auth/login", {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+      },
+      body: JSON.stringify({ email, password }),
+    });
+
+    if (response.ok) {
+      const data = await response.json();
+      localStorage.setItem("authToken", data.token);
+      router.push("/");
+    } else {
+      const data = await response.json();
+      alert(`Login failed: ${data.message}`);
+    }
   };
 
-  //const token = localStorage.getItem("authToken");
-  //   if (token) {
-  //     return (
-  //       <div className="flex flex-col items-center justify-center min-h-screen bg-gray-100">
-  //         <h1 className="text-2xl font-bold mb-4">You are already logged in.</h1>
-  //         <p className="text-gray-700">Redirecting to your dashboard...</p>
-  //       </div>
-  //     );
-  //   } else {
   return (
     <div className="flex min-h-svh w-full items-center justify-center p-6 md:p-10 bg-green-100">
       <div className="w-full max-w-sm">
@@ -41,7 +57,7 @@ export default function LoginPage() {
               </CardDescription>
             </CardHeader>
             <CardContent>
-              <form>
+              <form onSubmit={handleSignin}>
                 <FieldGroup>
                   <Field>
                     <FieldLabel htmlFor="email">Email</FieldLabel>
@@ -50,6 +66,8 @@ export default function LoginPage() {
                       type="email"
                       placeholder="m@example.com"
                       required
+                      value={email}
+                      onChange={(e) => setEmail(e.target.value)}
                     />
                   </Field>
                   <Field>
@@ -62,7 +80,13 @@ export default function LoginPage() {
                         Forgot your password?
                       </a>
                     </div>
-                    <Input id="password" type="password" required />
+                    <Input
+                      id="password"
+                      type="password"
+                      required
+                      value={password}
+                      onChange={(e) => setPassword(e.target.value)}
+                    />
                   </Field>
                   <Field>
                     <Button
@@ -76,7 +100,8 @@ export default function LoginPage() {
                       Login with Google
                     </Button>
                     <FieldDescription className="text-center">
-                      Don&apos;t have an account? <a href="#">Sign up</a>
+                      Don&apos;t have an account?{" "}
+                      <a href="/register">Sign up</a>
                     </FieldDescription>
                   </Field>
                 </FieldGroup>
@@ -88,4 +113,3 @@ export default function LoginPage() {
     </div>
   );
 }
-//}

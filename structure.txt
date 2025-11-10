@@ -1,0 +1,297 @@
+Great — I checked Playo’s homepage and layout to match its structure and UX patterns, then adapted everything to a **Voluntr** product (volunteer opportunities + NGOs) so you can build a near-feature-equal site but for volunteering. ([Playo][1])
+
+Below is a complete, implementation-ready blueprint: pages, UI/UX mapping, data models, API surface, auth/roles, search & geo, application flow (with Google Form link), admin/NGO dashboards, infra, testing, analytics, accessibility, and a suggested milestone plan + deliverables you can copy into your repo.
+
+---
+
+# Executive summary (one-liner)
+
+Build a Playo-like marketplace UX for volunteer activities: searchable, geospatially sorted public listing on home, card-based event detail pages, NGO dashboards to create/manage events, volunteer profiles, and an apply flow that records a Google Form link — with strong NoSQL (MongoDB) design, Next.js frontend, Auth.js for auth, and production infra.
+
+---
+
+# 1 — UX / pages mapping (Playo → Voluntr)
+
+Playo elements observed: hero + search, categories, city pages, event cards, blog, app CTA, company links. We’ll map each:
+
+Public (no auth required)
+
+* Home (hero + search bar: keywords + location + date + filters) — shows event cards (title, short summary, date/time, locationName, distance, tags, CTA “Apply / View”).
+* City / Category listing pages (e.g., /city/bengaluru, /category/environment) — aggregated event lists.
+* Event Card (compact): thumbnail, title, date/time, locationName, tags, seats, googleFormLink visible or “Apply (login)” depending on NGO setting.
+* Event Detail (public version): full summary, schedule, location pin, tags, organizer name (optional, if public), Google Form link (optional). Private organizer contact withheld.
+* Blog/Resources — guides, how to volunteer.
+* About / Team / Careers / Contact.
+
+Authenticated
+
+* Event Detail (authenticated version): shows organizer contact, apply in-app button (creates application record), show whether user applied, ability to mark interest.
+* Volunteer Profile: skills, past applications, saved events.
+* NGO Dashboard: create/edit events, view applicants, export CSV, analytics.
+* Admin Panel: manage users/events/reports.
+
+Mobile App & PWA
+
+* App CTA + deep linking for booking/apply. You can later add React Native or Next.js PWA.
+
+---
+
+# 2 — Visual & Interaction Notes (Playo-like -> Voluntr)
+
+* Keep hero with big headline and search input (keyword + geolocation).
+* Card-first UI: high-contrast card with black left+bottom frame (your brand), rounded corners, and green accents.
+* Map + list view toggle (map pins for nearby events).
+* Filters: upcoming/ongoing, tags (environment, education, health), remote vs on-site, date range, seats available.
+* Infinite scroll or paginated list with server-side cursor for performance.
+* Micro-interactions: save event, share link, open Google Form in new tab, “Apply” triggers login modal if unauthenticated.
+
+---
+
+# 3 — Data model (MongoDB) — production-ready schemas
+
+## `users` (merged NGO + volunteer)
+
+```js
+{
+  _id: ObjectId,
+  email: String,
+  name: String,
+  role: "volunteer" | "ngo" | "admin",
+  profile: { bio?: String, skills?: [String], avatarUrl?: String },
+  ngoProfile?: {
+    registrationNumber?: String,
+    website?: String,
+    contact: { name: String, email: String, phone?: String },
+    logoUrl?: String
+  },
+  auth: { provider: "credentials"|"google", providerId?: String },
+  createdAt: Date,
+  updatedAt: Date
+}
+```
+
+## `events`
+
+```js
+{
+  _id: ObjectId,
+  ngoId: ObjectId,           // ref to users
+  title: String,
+  summary: String,
+  description: String,
+  tags: [String],
+  startsAt: Date,
+  endsAt: Date,
+  seats: Number,
+  remote: Boolean,
+  locationName: String,
+  location: { type: "Point", coordinates: [lng, lat] }, // GeoJSON
+  googleFormLink: String,    // required or optional per NGO
+  publicFields: { showOrganizer: Boolean, showFormPublicly: Boolean },
+  stats: { views: Number, appliedCount: Number },
+  private: { organizerContact: { name, email, phone }, internalNotes },
+  createdAt: Date,
+  updatedAt: Date
+}
+```
+
+## `applications`
+
+```js
+{
+  _id: ObjectId,
+  eventId: ObjectId,
+  userId: ObjectId,
+  appliedAt: Date,
+  status: "submitted"|"pending"|"accepted"|"rejected",
+  googleFormLink: String,   // copy at time of apply
+  googleFormResponseId?: String,
+  notes?: String
+}
+```
+
+Indexes (must create):
+
+* `events.createIndex({ location: "2dsphere" })` — geo queries
+* `events.createIndex({ title: "text", summary: "text", tags: "text", description: "text" })` — keyword search
+* `events.createIndex({ ngoId: 1, startsAt: 1 })`
+* `applications.createIndex({ eventId: 1 })`, `applications.createIndex({ userId: 1 })`
+
+Schema validation via `validator` for required fields (title, location, startsAt, googleFormLink pattern).
+
+---
+
+# 4 — API design (REST / GraphQL) — endpoints mapped to Playo features
+
+Auth (public)
+
+* `POST /api/auth/signup` — credentials (email/password) create user
+* `POST /api/auth/signin` — NextAuth or JWT sign-in
+* Social logins (Google) via Auth.js
+
+Public (no auth)
+
+* `GET /api/events?lat=&lng=&q=&tags=&radius=&from=&to=&page=` — supports text + geoNear. Returns publicFields and googleFormLink if NGO set `showFormPublicly:true`.
+* `GET /api/events/:id` — public event card / detail (limited fields)
+* `GET /api/cities/:city/events` — city landing pages
+* `GET /api/tags` — popular tags, counts
+
+Authenticated (user)
+
+* `GET /api/events/:id/details` — returns private organizer contact if authorized or after user has applied
+* `POST /api/events/:id/apply` — create application (records googleFormLink); returns googleFormLink so client can open form. Also increment `events.stats.appliedCount`.
+* `GET /api/users/me/applications` — application history
+* `POST /api/users/me/save/:eventId` — save/bookmark
+* `GET /api/users/me` — profile
+
+NGO (auth + role check)
+
+* `POST /api/events` — create event
+* `PUT /api/events/:id` — edit
+* `DELETE /api/events/:id` — delete
+* `GET /api/events/:id/applications` — list applicants
+* `POST /api/events/:id/export` — export CSV of applicants
+
+Admin
+
+* Users/events moderation endpoints, reporting.
+
+Security: RBAC middleware enforce `req.user.role`.
+
+---
+
+# 5 — Search & Geo behavior (playo-like)
+
+Home search flow:
+
+1. User enters keywords + client provides geolocation (or city).
+2. Server runs text + geo combined query:
+
+   * If `lat/lng` provided: use `geoNear` to return nearest first, optionally sorted by textScore then distance.
+   * else use text index + startsAt filter.
+
+Example `aggregate`:
+
+```js
+db.events.aggregate([
+  { $geoNear: { near: { type: "Point", coordinates: [lng, lat] },
+                distanceField: "dist.calculated", spherical: true,
+                query: { startsAt: { $gte: new Date() } } } },
+  { $match: { $text: { $search: q } } }, // applied if q exists
+  { $project: { title:1, summary:1, locationName:1, startsAt:1, dist:1, googleFormLink:1 } },
+  { $sort: { "dist.calculated":1, score: { $meta: "textScore" } } },
+  { $limit: 30 }
+])
+```
+
+UI: show distance rounded, tag chips, time left badge, seats left. Map toggle shows pins and a “center to me” control.
+
+---
+
+# 6 — Apply flow (Playo-booking → Voluntr-apply with Google Forms)
+
+Two models: (A) direct external form (Google Form) or (B) in-app application + Google Form for registration.
+
+Recommended (course + easy): Hybrid:
+
+* Display `googleFormLink` on event card **only if NGO allowed public form**.
+* When user taps “Apply” and is **authenticated**, server creates an `applications` record (status: submitted/pending) capturing `googleFormLink`, `appliedAt`, userId. The server returns the `googleFormLink` for the client to open in new tab.
+* Optionally invite user to upload proof after Google Form submission (enter response ID), or poll Google Sheets via API/webhook to verify submission.
+
+Write operations:
+
+```js
+db.applications.insertOne({ eventId, userId, appliedAt: new Date(), status: "submitted", googleFormLink });
+db.events.updateOne({ _id: eventId }, { $inc: { "stats.appliedCount": 1 } });
+```
+
+---
+
+# 7 — Auth & Roles
+
+* Use **Auth.js (NextAuth)** with MongoDB adapter (good for Next.js). Credentials + Google.
+* Roles: `volunteer`, `ngo`, `admin`. Middleware in API checks roles.
+* Public endpoints must work without auth (search, listing), but details/organizer contact require JWT/session.
+
+---
+
+# 8 — Frontend architecture (Next.js App Router recommended)
+
+Pages & components:
+
+* `app/page.tsx` — Home (hero + search + list)
+* `app/events/[id]/page.tsx` — Event detail (public), `client` component for Apply button that triggers auth
+* `app/ngo/dashboard/...` — NGO dashboard
+* `components/EventCard.tsx` — reusable card (map pin variant)
+* `components/SearchBar.tsx` — with autocomplete for tags/cities
+* `components/Map.tsx` — Leaflet/Mapbox
+* `components/AuthModal.tsx` — login/signup via NextAuth
+* `lib/mongodb.ts`, `lib/auth.ts` (server helpers)
+* Global theme using Tailwind + shadcn; include your black-left & bottom border tokens.
+
+Performance:
+
+* Server-side rendering for home with fresh (or cached) search results, incremental static generation for city pages.
+* Use caching (Redis) for expensive geo queries if needed.
+
+---
+
+# 9 — Admin / NGO dashboards & features
+
+NGO dashboard:
+
+* Create event form: geo-coder search to set lat/lng, upload images, set googleFormLink, toggle `showFormPublicly`.
+* Applicants list with status, export CSV, messaging volunteers.
+* Analytics: views, applicants, conversion (views → apply).
+  Admin:
+* Moderate events (flagging), remove spam events, manage users.
+
+---
+
+# 10 — Devops & infra
+
+* Host frontend on **Vercel** (Next.js) or Netlify (if not using Next.js App Router SSR). Backend API as serverless routes or Node/Express on **Vercel Serverless Functions** or **Render**/**Heroku**.
+* Database: **MongoDB Atlas** (free tier OK for demo).
+* Caching: **Redis (optional)** for rate-limited search.
+* Storage: images on **Cloudinary** or S3.
+* CI/CD: GitHub Actions to run tests, lint, deploy.
+* Monitoring: Sentry for errors, Prometheus/Datadog for metrics (optional).
+
+---
+
+# 11 — SEO, analytics & marketing features
+
+* SEO-friendly city/category pages (like Playo): `og:title`, `og:description`, structured data for events (schema.org/Event).
+* Analytics: Google Analytics + Mixpanel for conversion tracking (view → click → apply).
+* App deep links and App Store badges.
+
+---
+
+# 12 — Security, privacy, and legal
+
+* Validate `googleFormLink` domain (optional) to avoid malicious redirects.
+* Rate-limit `GET /api/events` to prevent scraping.
+* Store personal organizer info in `private` fields; only expose after auth or apply.
+* GDPR-like handling for user data: deletion endpoints, data export.
+* TLS/HTTPS mandatory.
+
+---
+
+# 13 — Testing strategy
+
+* Unit tests for API (Jest / supertest)
+* Integration tests for DB writes (use test MongoDB cluster)
+* E2E tests (Cypress) for search → open event → login → apply.
+* Accessibility (axe) to ensure keyboard navigation & color contrast (green + black works well but check WCAG).
+
+---
+
+# 14 — Accessibility & contrast
+
+* Your high-contrast black borders + green accents should meet WCAG if text color contrast > 4.5:1. Use darker greens for body text; avoid green-only indicators.
+* Ensure buttons and interactive elements have focus states (outline) for keyboard users.
+
+---
+
+#
+[1]: https://playo.co/ "Book Sports Venues, Courts, Trainers, Events, and Find Players | Playo"

@@ -1,0 +1,19 @@
+import "./globals.css";
+import { Poppins } from "next/font/google";
+import Footer from "./footer";
+const poppins = Poppins({
+    subsets: ["latin"],
+    weight: ["300", "400", "500", "600", "700"], // optional weights
+});
+export const metadata = {
+    title: "Voluntr",
+    description: "Connecting Gap between Volunteers and NGOs",
+};
+export default function RootLayout({ children, }) {
+    return (<html lang="en" className={poppins.className}>
+      <body>
+        {children}
+        <Footer />
+      </body>
+    </html>);
+}
