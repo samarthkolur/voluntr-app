@@ -1,7 +1,7 @@
-const mongoose = require("mongoose");
-const bcrypt = require("bcryptjs");
-const { connect } = require("../lib/mongodb");
-const User = require("../lib/models/user");
+import mongoose from "mongoose";
+import bcrypt from "bcryptjs";
+import { connect } from "../lib/mongodb";
+import User from "../lib/models/user";
 
 async function seed() {
   await connect();

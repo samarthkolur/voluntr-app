@@ -36,7 +36,7 @@ describe('Login API Route', () => {
       json: async () => ({ email: 'test@example.com' }),
     } as Request;
 
-    const response = await POST(request);
+    const _response = await POST(request);
 
     expect(NextResponse.json).toHaveBeenCalledWith(
       { message: 'Email and password are required' },
