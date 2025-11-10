@@ -20,16 +20,12 @@ jobs:
         uses: actions/setup-node@v4
         with:
           node-version: '20'
-          cache: 'pnpm'
-
-      - name: Enable Corepack
-        run: corepack enable
 
       - name: Install dependencies
-        run: pnpm install --no-frozen-lockfile
+        run: npm ci
 
       - name: Build
-        run: pnpm run build
+        run: npm run build
 
       - name: Lint
-        run: pnpm run lint
+        run: npm run lint
