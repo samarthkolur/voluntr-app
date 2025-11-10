@@ -1,0 +1,35 @@
+name: API Route Testing
+
+on:
+  pull_request:
+    branches:
+      - main
+    paths:
+      - 'app/api/**'
+      - '__tests__/**'
+  push:
+    branches:
+      - main
+    paths:
+      - 'app/api/**'
+      - '__tests__/**'
+
+jobs:
+  test-api-routes:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+          cache: 'pnpm'
+
+      - name: Install dependencies
+        run: pnpm install --no-frozen-lockfile
+
+      - name: Run API tests
+        run: pnpm test
