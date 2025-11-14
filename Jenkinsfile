@@ -3,18 +3,22 @@ pipeline {
 
     environment {
         AWS_REGION = "eu-north-1"
-        AWS_ACCOUNT_ID = "211125426091"          // example: 123456789012
+        AWS_ACCOUNT_ID = "211125426091"
         ECR_REPO = "voluntr-app"
         IMAGE_TAG = "${BUILD_NUMBER}"
-        EC2_HOST = "ubuntu@51.21.131.214"      // example: ubuntu@51.21.xxx.xxx
+        EC2_HOST = "ubuntu@51.21.131.214"
         COMPOSE_PATH = "/home/ubuntu/voluntr/docker-compose.yml"
+
+        // Load AWS credentials from Jenkins securely
+        AWS_ACCESS_KEY_ID     = credentials('aws-access-key-id')
+        AWS_SECRET_ACCESS_KEY = credentials('aws-secret-access-key')
     }
 
     stages {
 
         stage('Checkout') {
             steps {
-                git 'https://github.com/samarthkolur/voluntr-app.git'
+                git branch: 'main', url: 'https://github.com/samarthkolur/voluntr-app.git'
             }
         }
 
@@ -40,13 +44,12 @@ pipeline {
         }
 
         stage('Login to AWS ECR') {
-            environment {
-                AWS_ACCESS_KEY_ID = credentials('AKIATCKAOK6V3ZWMANHZ')
-                AWS_SECRET_ACCESS_KEY = credentials('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')
-            }
             steps {
                 sh """
+                aws configure set aws_access_key_id ${AWS_ACCESS_KEY_ID}
+                aws configure set aws_secret_access_key ${AWS_SECRET_ACCESS_KEY}
                 aws configure set region ${AWS_REGION}
+
                 aws ecr get-login-password --region ${AWS_REGION} \
                     | docker login --username AWS \
                     --password-stdin ${AWS_ACCOUNT_ID}.dkr.ecr.${AWS_REGION}.amazonaws.com
