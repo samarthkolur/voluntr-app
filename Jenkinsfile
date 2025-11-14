@@ -2,11 +2,11 @@ pipeline {
     agent any
 
     environment {
-        AWS_REGION = "ap-south-1"
-        AWS_ACCOUNT_ID = "YOUR_ACCOUNT_ID"          // example: 123456789012
+        AWS_REGION = "eu-north-1"
+        AWS_ACCOUNT_ID = "211125426091"          // example: 123456789012
         ECR_REPO = "voluntr-app"
         IMAGE_TAG = "${BUILD_NUMBER}"
-        EC2_HOST = "ubuntu@YOUR_EC2_PUBLIC_IP"      // example: ubuntu@51.21.xxx.xxx
+        EC2_HOST = "ubuntu@51.21.131.214"      // example: ubuntu@51.21.xxx.xxx
         COMPOSE_PATH = "/home/ubuntu/voluntr/docker-compose.yml"
     }
 
@@ -41,8 +41,8 @@ pipeline {
 
         stage('Login to AWS ECR') {
             environment {
-                AWS_ACCESS_KEY_ID = credentials('aws-access-key-id')
-                AWS_SECRET_ACCESS_KEY = credentials('aws-secret-access-key')
+                AWS_ACCESS_KEY_ID = credentials('AKIATCKAOK6V3ZWMANHZ')
+                AWS_SECRET_ACCESS_KEY = credentials('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')
             }
             steps {
                 sh """
